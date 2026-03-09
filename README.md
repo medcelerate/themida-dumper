@@ -1,6 +1,6 @@
 # Themida Dumper
 
-Generic Themida/WinLicense payload extractor. Launches a protected PE as a suspended process, detects section decryption at runtime, dumps the unpacked binary with fixed PE headers, and scans all process memory for IOCs.
+Generic Themida/WinLicense payload extractor (v4.0). Launches a protected PE as a suspended process, detects section decryption at runtime, dumps the unpacked binary with fixed PE headers, and scans all process memory for IOCs.
 
 ## Features
 
@@ -9,22 +9,13 @@ Generic Themida/WinLicense payload extractor. Launches a protected PE as a suspe
 - **Immediate suspend** -- Suspends target the moment decryption is detected (prevents ransomware damage)
 - **Full PE dump** -- Memory dump with PE header fixup (`*_unpacked.exe`)
 - **Individual section dumps** -- Each section saved as `{name}_0x{address}.bin`
-- **IOC extraction** -- Scans all committed process memory for:
-  - URLs (http/https/ftp)
-  - Bitcoin wallet addresses
-  - Onion URLs
-  - Email addresses
-  - Ransom note indicators
-  - Targeted file extensions
-  - Registry keys
-  - Mutex names
-  - WMI queries
-  - System commands (cmd, powershell, wmic, etc.)
-- **Ransom note capture** -- Detects and saves dropped ransom notes from target directory
-- **DLL support** -- Load DLLs via `--dll-export=<Name>` or `--dll-export=#1` (ordinal)
+- **IOC extraction** -- Scans all committed process memory for URLs, Bitcoin wallets, onion URLs, Telegram links, email addresses, ransom indicators, file extensions, registry keys, mutex names, WMI queries, system commands, file paths
+- **Wide string scanning** -- Extracts both ASCII and UTF-16LE strings
+- **Dropped file capture** -- Captures ransom notes and suspicious files (README, DECRYPT, .hta, .html, .txt) from the target directory
+- **DLL support** -- Load DLLs via `--dll-export=<Name>` or `--dll-export=#1` (ordinal). Supports .dll, .ocx, .cpl
 - **ServiceMain DLLs** -- Auto-creates a temporary Windows service for service DLLs
-- **Anti-monitor bypass** -- Kills known analysis tools that Themida detects (Process Monitor, Wireshark, IDA, x64dbg, OllyDbg, API Monitor, etc.)
-- **VMware/VBox cleanup** -- Optional `--kill-vmtools` to kill virtualization guest tools
+- **Anti-monitor bypass** -- Kills 50+ known analysis tools that Themida detects
+- **VMware/VBox cleanup** -- Optional `--kill-vmtools` to kill virtualization guest tools and stop VM services
 - **Password-protected output** -- Results packaged as `.dat` archive (ZipCrypto, password: `virus`)
 
 ## Supported Protectors
@@ -44,30 +35,33 @@ Generic Themida/WinLicense payload extractor. Launches a protected PE as a suspe
 ## Usage
 
 ```bash
-# EXE target
-themida_dumper_x64.exe <target.exe> [output_dir] [--kill-vmtools]
+# EXE (drag & drop or command line)
+themida_dumper_x64.exe <target.exe>
 
-# DLL target (named export)
+# EXE with VM tools cleanup
+themida_dumper_x64.exe <target.exe> --kill-vmtools
+
+# DLL (named export, required for DLLs)
 themida_dumper_x64.exe sample.dll --dll-export=DllRegisterServer
 
-# DLL target (ordinal export)
+# DLL (ordinal export)
 themida_dumper_x64.exe sample.dll --dll-export=#1
-
-# Drag & drop
-# Simply drag a protected PE onto the executable
 ```
+
+> DLLs require `--dll-export` and cannot be drag-and-dropped.
 
 ## Output
 
-Results are saved to a folder and packaged as a `.dat` archive:
+Results are saved to `themida_dump_{filename}/` and packaged as a `.dat` archive:
 
 ```
-themida_dump_{filename}/
-├── .text_0x00401000.bin          # Individual section dumps
-├── .rdata_0x00410000.bin
-├── {filename}_unpacked.exe       # Full PE dump with fixed headers
-├── heap_strings.txt              # Extracted IOC strings
-└── ransom_notes/                 # Captured ransom notes (if any)
+themida_dump_malware.exe/
+├── _text_0x401000.bin            # Individual section dumps
+├── _rdata_0x410000.bin
+├── malware.exe_unpacked.exe      # Full PE dump with fixed headers
+├── extracted_strings.txt         # IOC strings (ASCII + wide)
+├── README.txt                    # Captured ransom notes (if any)
+└── DECRYPT_FILES.hta
 ```
 
 ## Building
@@ -75,25 +69,26 @@ themida_dump_{filename}/
 Requires [MinGW-w64](https://www.mingw-w64.org/).
 
 ```bash
-# 64-bit build (recommended -- handles both 32-bit and 64-bit targets)
+# 64-bit build (recommended)
 x86_64-w64-mingw32-gcc -O2 -s -static -o themida_dumper_x64.exe themida_dumper_universal.c
 
-# 32-bit build (for 32-bit-only VMs)
+# 32-bit build
 i686-w64-mingw32-gcc -O2 -s -static -o themida_dumper_x86.exe themida_dumper_universal.c
 ```
 
 ## How It Works
 
-1. **Launch** -- Target PE is created as a SUSPENDED process
-2. **Detect architecture** -- Queries WOW64 status to determine 32-bit vs 64-bit
-3. **Fingerprint** -- Reads 64 bytes from each PE section to create a baseline
-4. **Monitor** -- Resumes the process and polls sections every 50ms
-5. **Detect decryption** -- When section fingerprints change, decryption has occurred
-6. **Suspend & dump** -- Immediately suspends the process, dumps all sections and full PE
-7. **Scan memory** -- Walks all committed memory regions for IOC strings
-8. **Capture artifacts** -- Saves ransom notes and dropped files
-9. **Archive** -- Packages everything into a password-protected `.dat` file
-10. **Terminate** -- Kills the target process
+1. Enables SeDebugPrivilege and kills known analysis tools
+2. Launches target PE as a SUSPENDED process
+3. Detects target architecture (WOW64 or native x64)
+4. Fingerprints each PE section (64 bytes)
+5. Resumes the process and polls sections every 50ms
+6. When fingerprints change (decryption detected), immediately suspends
+7. Dumps all sections and full PE with header fixup
+8. Scans all committed memory regions for IOC strings
+9. Captures dropped ransom notes from target directory
+10. Packages everything into a password-protected `.dat` file
+11. Terminates target and cleans up temp services
 
 ## Notes
 
