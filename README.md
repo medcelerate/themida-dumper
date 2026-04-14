@@ -1,6 +1,6 @@
 # Themida Dumper
 
-Generic Themida/WinLicense payload extractor (v4.0). Launches a protected PE as a suspended process, detects section decryption at runtime, dumps the unpacked binary with fixed PE headers, and scans all process memory for IOCs.
+Generic Themida/WinLicense payload extractor with Memory Harvester (v6.0). Launches a protected PE as a suspended process, detects section decryption at runtime, dumps the unpacked binary with fixed PE headers, and scans all process memory for IOCs.
 
 ## Features
 
@@ -16,6 +16,11 @@ Generic Themida/WinLicense payload extractor (v4.0). Launches a protected PE as 
 - **ServiceMain DLLs** -- Auto-creates a temporary Windows service for service DLLs
 - **Anti-monitor bypass** -- Kills 50+ known analysis tools that Themida detects
 - **VMware/VBox cleanup** -- Optional `--kill-vmtools` to kill virtualization guest tools and stop VM services
+- **Memory Harvester** -- Dynamic executable region tracking with rolling 500ms snapshots, fingerprint-based change detection, captures ephemeral unpacked code outside PE image
+- **PE-sieve integration** -- Auto-detects pe-sieve at C:\Tools\, runs for advanced unpacking validation
+- **Behavioral triggers** -- Monitors Desktop, TEMP, APPDATA for new file drops; triggers dump on ransomware activity
+- **Harvest report** -- harvest_report.txt with full region timeline, section status, PE-sieve results
+- **Smart dropper mode** -- Filesystem + process monitoring discovers packed payloads dropped by the sample
 - **Password-protected output** -- Results packaged as `.dat` archive (ZipCrypto, password: `virus`)
 
 ## Supported Protectors
@@ -100,3 +105,15 @@ i686-w64-mingw32-gcc -O2 -s -static -o themida_dumper_x86.exe themida_dumper_uni
 ## License
 
 MIT
+
+## What's New in v6.0
+
+| Feature | v4.0 | v6.0 |
+|---------|------|------|
+| Region tracking | None | Rolling snapshots every 500ms |
+| PE-sieve | None | Auto-detect + run on target PID |
+| Behavioral trigger | None | File drop monitoring in watched dirs |
+| Harvest report | None | Full timeline + region summary |
+| Dropper mode | Basic | Smart filesystem + process scanning |
+| Region dumps | None | `region_*.bin` for all exec regions |
+| CLI options | 6 | 10 (`--no-harvest`, `--pesieve-path`, etc.) |
