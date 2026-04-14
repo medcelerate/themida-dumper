@@ -1182,6 +1182,14 @@ static void capture_dropped_files(const char *target_dir)
             is_note = 1;
 
         if (is_note) {
+            /* Skip PE executables — ransom notes are text files, not .exe/.dll */
+            const char *ext = strrchr(name, '.');
+            if (ext && (_stricmp(ext, ".exe") == 0 || _stricmp(ext, ".dll") == 0 ||
+                        _stricmp(ext, ".scr") == 0 || _stricmp(ext, ".com") == 0)) {
+                printf("    Skipped PE: %s (not a ransom note)\n", name);
+                continue;
+            }
+
             char src[MAX_PATH], dst[MAX_PATH];
             snprintf(src, sizeof(src), "%s\\%s", target_dir, name);
             snprintf(dst, sizeof(dst), "%s\\%s", g_output_dir, name);
