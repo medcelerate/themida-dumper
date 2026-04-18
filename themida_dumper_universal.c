@@ -1,6 +1,12 @@
-/* themida_dumper_universal.c - Themida/WinLicense dumper (x86+x64)
- * v6.0 - Memory Harvester: dynamic region tracking, PE-sieve integration
- * gcc: x86_64-w64-mingw32-gcc -O2 -s -static -o themida_dumper_x64.exe themida_dumper_universal.c
+/* themida_dumper_universal.c - Multi-mode PE dumper (x86+x64)
+ * v6.1 - --mode flag: themida | vmprotect | runtime
+ *        Runtime mode: generic memory harvester for any sample
+ *
+ * Three binaries built from this source:
+ *   x86_64-w64-mingw32-gcc -O2 -s -static -DDEFAULT_MODE=MODE_THEMIDA   -o themida_dumper_x64.exe themida_dumper_universal.c
+ *   x86_64-w64-mingw32-gcc -O2 -s -static -DDEFAULT_MODE=MODE_VMPROTECT -o vmprotect_dumper_x64.exe themida_dumper_universal.c
+ *   x86_64-w64-mingw32-gcc -O2 -s -static -DDEFAULT_MODE=MODE_RUNTIME   -o runtime_dumper_x64.exe themida_dumper_universal.c
+ * (swap i686-w64-mingw32-gcc for x86 variants)
  */
 
 #include <windows.h>
@@ -41,6 +47,39 @@
 
 #define ProcessBasicInformation     0
 #define ProcessWow64Information     26
+
+/* Dumper mode — selected by --mode flag or compile-time DEFAULT_MODE.
+ * MODE_THEMIDA / MODE_VMPROTECT: original packer-specific behavior, packer check gates execution.
+ * MODE_RUNTIME: generic memory harvester for any sample, skips packer gating. */
+typedef enum {
+    MODE_THEMIDA   = 0,
+    MODE_VMPROTECT = 1,
+    MODE_RUNTIME   = 2
+} DumperMode;
+
+#ifndef DEFAULT_MODE
+#define DEFAULT_MODE MODE_THEMIDA
+#endif
+
+static DumperMode g_mode = DEFAULT_MODE;
+
+static const char *mode_label(void) {
+    switch (g_mode) {
+        case MODE_VMPROTECT: return "VMProtect";
+        case MODE_RUNTIME:   return "Runtime";
+        case MODE_THEMIDA:
+        default:             return "Themida";
+    }
+}
+
+static const char *mode_dump_prefix(void) {
+    switch (g_mode) {
+        case MODE_VMPROTECT: return "vmp_dump_";
+        case MODE_RUNTIME:   return "runtime_dump_";
+        case MODE_THEMIDA:
+        default:             return "themida_dump_";
+    }
+}
 
 typedef LONG NTSTATUS;
 #define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
@@ -1102,7 +1141,7 @@ static void write_harvest_report(DWORD total_elapsed_ms)
     FILE *f = fopen(rpath, "w");
     if (!f) return;
 
-    fprintf(f, "=== Clarity Memory Harvester v6.0 Report ===\n");
+    fprintf(f, "=== Clarity %s Memory Harvester v6.1 Report ===\n", mode_label());
     fprintf(f, "Target architecture: %s\n", g_is_32bit_target ? "x86" : "x64");
     fprintf(f, "Image base: " ADDR_FMT "\n", ADDR_CAST(g_image_base));
     fprintf(f, "Size of image: 0x%08X\n", g_size_of_image);
@@ -1581,7 +1620,7 @@ static void build_output_dir(const char *target_path)
     get_parent_dir(target_path, parent, sizeof(parent));
 
     snprintf(g_output_dir, sizeof(g_output_dir),
-             "%s\\themida_dump_%s", parent, basename);
+             "%s\\%s%s", parent, mode_dump_prefix(), basename);
 }
 
 #define ZIP_LOCAL_SIG       0x04034b50
@@ -2429,11 +2468,24 @@ static void write_dropper_info(const char *original, const char *payload, DWORD 
 
 int main(int argc, char *argv[])
 {
+    /* Parse --mode early so the banner reflects the selected mode. Binary name alone
+     * implies mode via DEFAULT_MODE compile flag; --mode= overrides for testing. */
+    for (int i = 1; i < argc; i++) {
+        if (strncmp(argv[i], "--mode=", 7) == 0) {
+            const char *m = argv[i] + 7;
+            if (strcmp(m, "themida") == 0)        g_mode = MODE_THEMIDA;
+            else if (strcmp(m, "vmprotect") == 0) g_mode = MODE_VMPROTECT;
+            else if (strcmp(m, "runtime") == 0)   g_mode = MODE_RUNTIME;
+            else printf("[!] Unknown --mode=%s, using default\n", m);
+        }
+    }
+
     printf("=======================================================\n");
-    printf("  Themida Section Dumper v6.0 (Memory Harvester)\n");
+    printf("  %s Dumper v6.1 (Memory Harvester)\n", mode_label());
     printf("  Supports 32-bit AND 64-bit PE targets\n");
     printf("  + Dynamic region tracking + PE-sieve integration\n");
-    printf("  Drag & drop a sample onto this exe to start!\n");
+    if (g_mode == MODE_RUNTIME)
+        printf("  [RUNTIME MODE] generic dump for any sample\n");
     printf("=======================================================\n\n");
 
     int kill_vmtools = 0;
@@ -2441,11 +2493,11 @@ int main(int argc, char *argv[])
 
     if (argc < 2) {
         printf("Usage: %s <target.exe|target.dll> [options]\n\n", argv[0]);
-        printf("  Drag & drop a Themida-protected PE onto this exe,\n");
-        printf("  or run from command line.\n\n");
+        printf("  Drag & drop a sample onto this exe, or run from command line.\n\n");
         printf("  Output folder is auto-created next to the sample:\n");
-        printf("    themida_dump_{sample_filename}\\\n\n");
+        printf("    %s{sample_filename}\\\n\n", mode_dump_prefix());
         printf("Options:\n");
+        printf("  --mode=<m>          Override compiled default: themida|vmprotect|runtime\n");
         printf("  --dll-export=Name   For DLL targets: specify export to call\n");
         printf("  --wait-for=Name     Wait for a specific process to spawn, then dump it\n");
         printf("  --dropper-timeout=N Dropper mode timeout in seconds (default: 60)\n");
@@ -2480,7 +2532,10 @@ int main(int argc, char *argv[])
 
     const char *target_exe = argv[1];
     for (int i = 2; i < argc; i++) {
-        if (strncmp(argv[i], "--dll-export=", 13) == 0) {
+        if (strncmp(argv[i], "--mode=", 7) == 0) {
+            /* already parsed above, skip */
+            continue;
+        } else if (strncmp(argv[i], "--dll-export=", 13) == 0) {
             strncpy(g_dll_export, argv[i] + 13, sizeof(g_dll_export) - 1);
         } else if (strncmp(argv[i], "--wait-for=", 11) == 0) {
             strncpy(g_wait_for_process, argv[i] + 11, sizeof(g_wait_for_process) - 1);
@@ -2514,6 +2569,13 @@ int main(int argc, char *argv[])
         printf("\nPress Enter to exit...");
         if (!g_no_pause) getchar();
         return 1;
+    }
+
+    /* Runtime mode skips packer detection entirely: launch sample, attach, and let the
+     * Memory Harvester capture executable regions on a rolling basis. */
+    if (g_mode == MODE_RUNTIME) {
+        g_force_direct = 1;
+        g_harvest_enabled = 1;
     }
 
     build_output_dir(target_exe);

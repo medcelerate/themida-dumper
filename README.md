@@ -1,6 +1,16 @@
-# Themida Dumper
+# Themida Dumper (Multi-Mode)
 
-Generic Themida/WinLicense payload extractor with Memory Harvester (v6.0). Launches a protected PE as a suspended process, detects section decryption at runtime, dumps the unpacked binary with fixed PE headers, and scans all process memory for IOCs.
+Generic PE payload extractor with Memory Harvester (v6.1). One source, three modes: **themida**, **vmprotect**, **runtime**. Launches a sample as a suspended process, detects section decryption or executes freely for generic memory capture, dumps the unpacked binary with fixed PE headers, and scans all process memory for IOCs.
+
+## Modes
+
+| Mode | Binary | When to use |
+|------|--------|-------------|
+| `themida` | `themida_dumper_{x64,x86}.exe` | Themida/WinLicense-packed samples (packer check gates execution) |
+| `vmprotect` | `vmprotect_dumper_{x64,x86}.exe` | VMProtect-packed samples (packer check gates execution) |
+| `runtime` | `runtime_dumper_{x64,x86}.exe` | Generic memory capture for any sample (no packer required) |
+
+Mode is baked into the binary via `-DDEFAULT_MODE=MODE_*` at build time, or overridden at runtime with `--mode=<name>`.
 
 ## Features
 
@@ -71,15 +81,23 @@ themida_dump_malware.exe/
 
 ## Building
 
-Requires [MinGW-w64](https://www.mingw-w64.org/).
+Requires [MinGW-w64](https://www.mingw-w64.org/). The same source compiles into three binary variants by setting `-DDEFAULT_MODE`:
 
 ```bash
-# 64-bit build (recommended)
-x86_64-w64-mingw32-gcc -O2 -s -static -o themida_dumper_x64.exe themida_dumper_universal.c
+# Themida mode (original behavior, packer check gates execution)
+x86_64-w64-mingw32-gcc -O2 -s -static -DDEFAULT_MODE=MODE_THEMIDA   -o themida_dumper_x64.exe   themida_dumper_universal.c
+i686-w64-mingw32-gcc   -O2 -s -static -DDEFAULT_MODE=MODE_THEMIDA   -o themida_dumper_x86.exe   themida_dumper_universal.c
 
-# 32-bit build
-i686-w64-mingw32-gcc -O2 -s -static -o themida_dumper_x86.exe themida_dumper_universal.c
+# VMProtect mode
+x86_64-w64-mingw32-gcc -O2 -s -static -DDEFAULT_MODE=MODE_VMPROTECT -o vmprotect_dumper_x64.exe themida_dumper_universal.c
+i686-w64-mingw32-gcc   -O2 -s -static -DDEFAULT_MODE=MODE_VMPROTECT -o vmprotect_dumper_x86.exe themida_dumper_universal.c
+
+# Runtime mode (generic, no packer check)
+x86_64-w64-mingw32-gcc -O2 -s -static -DDEFAULT_MODE=MODE_RUNTIME   -o runtime_dumper_x64.exe   themida_dumper_universal.c
+i686-w64-mingw32-gcc   -O2 -s -static -DDEFAULT_MODE=MODE_RUNTIME   -o runtime_dumper_x86.exe   themida_dumper_universal.c
 ```
+
+If `-DDEFAULT_MODE` is omitted, the binary defaults to `MODE_THEMIDA`. Pass `--mode=themida|vmprotect|runtime` at runtime to override the compiled default.
 
 ## How It Works
 
@@ -105,6 +123,13 @@ i686-w64-mingw32-gcc -O2 -s -static -o themida_dumper_x86.exe themida_dumper_uni
 ## License
 
 MIT
+
+## What's New in v6.1
+
+- **Multi-mode** — `--mode=themida|vmprotect|runtime` flag; same source compiles into three binaries via `-DDEFAULT_MODE`.
+- **Runtime mode** — generic memory harvester for any sample. Skips packer detection entirely, launches the target in direct mode, and lets the Memory Harvester capture executable regions on a rolling 500 ms interval. Intended for samples where static analysis hits encrypted strings, API hashing, or crypto routines that only resolve at runtime — dump output can be fed back to IDA/Ghidra for a second pass.
+- **Output naming** — `themida_dump_*` / `vmp_dump_*` / `runtime_dump_*` prefix selected by mode.
+- **Harvest report title** — includes the mode name: `=== Clarity {Themida|VMProtect|Runtime} Memory Harvester v6.1 Report ===`.
 
 ## What's New in v6.0
 
