@@ -99,6 +99,20 @@ i686-w64-mingw32-gcc   -O2 -s -static -DDEFAULT_MODE=MODE_RUNTIME   -o runtime_d
 
 If `-DDEFAULT_MODE` is omitted, the binary defaults to `MODE_THEMIDA`. Pass `--mode=themida|vmprotect|runtime` at runtime to override the compiled default.
 
+## CI/CD
+
+GitHub Actions now builds all Windows variants on every push, pull request, and manual run:
+
+- `themida_dumper_x64.exe`
+- `themida_dumper_x86.exe`
+- `vmprotect_dumper_x64.exe`
+- `vmprotect_dumper_x86.exe`
+- `runtime_dumper_x64.exe`
+- `runtime_dumper_x86.exe`
+
+Each build is uploaded as a workflow artifact.  
+When you push a Git tag, the workflow also publishes all six `.exe` files to the GitHub release for that tag.
+
 ## How It Works
 
 1. Enables SeDebugPrivilege and kills known analysis tools
